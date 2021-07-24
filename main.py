@@ -96,7 +96,7 @@ async def my_task(channel1):
             embed.add_field(name='Seller', value=seller['ingame_name'] + '\n' + seller['status'].title(), inline=True)
 
             await channel1.send(embed=embed)
-            await asyncio.sleep(1)
+            await asyncio.sleep(.2)
 
 
 
