@@ -100,12 +100,12 @@ async def my_task(channel1):
 
 
             await channel1.send(embed=embed)
-            await asyncio.sleep(.5)
+            #await asyncio.sleep(.5)
 
 
 
 
-        await asyncio.sleep(10)
+        await asyncio.sleep(60)
 
 
 @client.command()
