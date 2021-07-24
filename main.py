@@ -50,13 +50,13 @@ async def my_task(channel1):
         numberOfRivens = len(newRivenIDs)
 
 
-        #if(numberOfRivens == 0):
-        #    embed = discord.Embed(
-        #        title = 'No new rivens have been created!',
-        #        #description = 'This is a description',
-        #        color = discord.Color.purple()
-        #    )
-        #    await channel1.send(embed=embed)
+        if(numberOfRivens == 0):
+            embed = discord.Embed(
+                title = 'No new rivens have been created!',
+                #description = 'This is a description',
+                color = discord.Color.purple()
+            )
+            await channel1.send(embed=embed)
 
         for item in range(numberOfRivens):
 
