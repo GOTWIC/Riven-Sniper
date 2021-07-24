@@ -59,6 +59,7 @@ async def my_task(channel1):
         #    await channel1.send(embed=embed)
 
         for item in range(numberOfRivens):
+
             index = numberOfRivens - (item + 1)
             auction = auctions[index]
             riven = auction['item']
@@ -66,14 +67,14 @@ async def my_task(channel1):
             rivenStats = ["", "", "", ""]
             statCount = 0
 
+            auctionUrl = "(https://warframe.market/auction/" + auction['id'] + ")"
+
             if(auctions[index]['item']['type'] == "sister" or auctions[index]['item']['type'] == "lich"):
                 continue
 
-
-    
             embed = discord.Embed(
                 title = riven['weapon_url_name'].replace("_", " ").title() + " " + riven['name'].title(),
-                #description = 'This is a description',
+                description = "Click [here]" + auctionUrl + " to go to auction",
                 color = discord.Color.purple()
             )
 
@@ -95,6 +96,9 @@ async def my_task(channel1):
             
             embed.add_field(name='Seller', value=seller['ingame_name'] + '\n' + seller['status'].title(), inline=True)
 
+            #embed.add_field(name='Auction Link', value="Click [here]" + auctionUrl + " to go to auction", inline=True)
+
+
             await channel1.send(embed=embed)
             await asyncio.sleep(.5)
 
@@ -112,6 +116,14 @@ async def info(channel):
 
 
 client.run('ODY4MTM3NjQyMzA5NTgyODU4.YPrSLw.ewZd22TCBkDTDMN-__QxwjhZ9uM')
+
+
+# To-Do
+# Channeling Damage = Initial Combo
+# Base Damage / Melee Damage = Damage
+# Critical Chance On Slide Attack = Slide CC
+#
+#
 
 
 
