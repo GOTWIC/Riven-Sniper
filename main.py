@@ -1,5 +1,6 @@
 import os
 import json
+import pymongo
 from discord import channel
 from discord.client import Client
 from discord.message import Message
@@ -10,16 +11,11 @@ from requests_html import HTMLSession
 import discord
 from discord.ext import commands
 import asyncio
-import pymongo
 from pymongo import MongoClient
 
 
 rawRivenIDs = []
 newRivenIDs = []
-
-testArray = [{"test":["1", "2", "3", "4"]}, ["5", "6", "7", "8"], ["9", "10", "11", "12"], ["13", "14", "15", "16"]]
-
-testLabel = "name"
 
 updateRivens = True
 mongoID = 170204
@@ -30,6 +26,7 @@ session = HTMLSession()
 client = commands.Bot(command_prefix='.')
 channel1 = channel
 rawItemjson = session.get("https://api.warframe.market/v1/riven/items").json()
+items = rawItemjson['payload']['items']
 
 
 cluster = MongoClient("mongodb+srv://GOTWIC:Swagnik10Caesar12_MED@cluster1.mu094.mongodb.net/test?ssl=true&ssl_cert_reqs=CERT_NONE")
@@ -133,22 +130,23 @@ async def getNewRivens(channel1):
         await asyncio.sleep(30)
 
 
-@client.command(name="command")
+@client.command(name="add")
 async def _command(ctx):
     global times_used
     await ctx.send(f"y or n")
 
-    NotificationSetup()
+    notificationSetup()
 
     #def check(msg):
     #    return msg.author == ctx.author and msg.channel == ctx.channel and \
     #    msg.content.lower() in ["y", "n"]
 
     msg = await client.wait_for("message")#, check=check)
-    if msg.content.lower() == "y":
-        await ctx.send("You said yes!")
-    else:
-        await ctx.send("You said no!")
+    
+    msg.content.lower().replace(" ", "_")
+    
+
+        #await ctx.send("You said no!")
         
 
 
@@ -176,7 +174,7 @@ def queryMongoForOldRivens():
 
     return IDs
 
-def NotificationSetup():
+def notificationSetup():
     if (collection2.count_documents(query) == 0):
         PrimaryWeaponNames = []
         SecondaryWeaponNames = []
@@ -184,26 +182,36 @@ def NotificationSetup():
         MiscWeaponNames = []
 
         field = 'init'
-        items = rawItemjson['payload']['items']
 
         createNotifCollection(0, field, collection2, "primary", PrimaryWeaponNames, items)
         createNotifCollection(0, field, collection3, "secondary", SecondaryWeaponNames, items)
         createNotifCollection(0, field, collection4, "melee", MeleeWeaponName, items)
         createNotifCollection(0, field, collection5, "misc", MiscWeaponNames, items)
         
-         
+
+
+
+
+
+
+
+def weaponExists():
+    print("Working...")
+
+
+
+
+
 
 def getItemAttribute(string, type):
-
-    items = rawItemjson['payload']['items']
     for item in items:
         if(item['url_name'] == string):
             return item[type]
 
-def createNotifCollection(value, field, collection, type, arr, items):
+def createNotifCollection(value, field, collection, type, arr, theItems):
     insertMongo(value, field, collection)
 
-    for item in items:
+    for item in theItems:
         if(type == "misc"):
             if(item['group'] == "zaw" or item['group'] == "sentinel" or item['group'] == "archgun" or item['group'] == "kitgun"):
                 arr.append(item['url_name'])
@@ -214,9 +222,7 @@ def createNotifCollection(value, field, collection, type, arr, items):
     for weapon in arr:
             updateMongo([], weapon, collection)
 
-    
-   
-
+ 
 def abbreviateStat(string, slot):
 
     #result = string
