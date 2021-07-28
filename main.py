@@ -1,8 +1,11 @@
 import os
 import json
 from discord import channel
+from discord.client import Client
 from discord.message import Message
+from pymongo import collection
 from pymongo.message import update
+from pymongo.read_preferences import Primary
 from requests_html import HTMLSession
 import discord
 from discord.ext import commands
@@ -14,6 +17,10 @@ from pymongo import MongoClient
 rawRivenIDs = []
 newRivenIDs = []
 
+testArray = [{"test":["1", "2", "3", "4"]}, ["5", "6", "7", "8"], ["9", "10", "11", "12"], ["13", "14", "15", "16"]]
+
+testLabel = "name"
+
 updateRivens = True
 mongoID = 170204
 query = {"_id": mongoID}
@@ -22,11 +29,16 @@ url = "https://api.warframe.market/v1/auctions?type=rivens"
 session = HTMLSession()
 client = commands.Bot(command_prefix='.')
 channel1 = channel
+rawItemjson = session.get("https://api.warframe.market/v1/riven/items").json()
 
 
 cluster = MongoClient("mongodb+srv://GOTWIC:Swagnik10Caesar12_MED@cluster1.mu094.mongodb.net/test?ssl=true&ssl_cert_reqs=CERT_NONE")
 db = cluster["Riven_Sniper_Database"]
-collection = db["Old_Riven_Log"]
+collection1 = db["Old_Riven_Log"]
+collection2 = db["Riven_Notification_List_Primaries"]
+collection3 = db["Riven_Notification_List_Secondaries"]
+collection4 = db["Riven_Notification_List_Melees"]
+collection5 = db["Riven_Notification_List_Miscellaneous"]
 
 @client.event
 async def on_ready():
@@ -51,7 +63,7 @@ async def getNewRivens(channel1):
 
         field = "Riven_IDs"
   
-        updateMongo(rawRivenIDs, field) 
+        updateMongo(rawRivenIDs, field, collection1) 
 
         numberOfRivens = getArrSize(newRivenIDs)
 
@@ -121,6 +133,25 @@ async def getNewRivens(channel1):
         await asyncio.sleep(30)
 
 
+@client.command(name="command")
+async def _command(ctx):
+    global times_used
+    await ctx.send(f"y or n")
+
+    NotificationSetup()
+
+    #def check(msg):
+    #    return msg.author == ctx.author and msg.channel == ctx.channel and \
+    #    msg.content.lower() in ["y", "n"]
+
+    msg = await client.wait_for("message")#, check=check)
+    if msg.content.lower() == "y":
+        await ctx.send("You said yes!")
+    else:
+        await ctx.send("You said no!")
+        
+
+
 #║╔═════════════════════════════════════════════════════════════════════════╗║#
 #║║ ███████╗██╗░░░██╗███╗░░██╗░█████╗░████████╗██╗░█████╗░███╗░░██╗░██████╗ ║║#
 #║║ ██╔════╝██║░░░██║████╗░██║██╔══██╗╚══██╔══╝██║██╔══██╗████╗░██║██╔════╝ ║║#
@@ -136,23 +167,54 @@ def getALLChannel():
 
 
 def queryMongoForOldRivens():
-    if (collection.count_documents(query) == 0):
-        collection.insert_one({"_id": mongoID, "Riven_IDs": []})
-        
-    user = collection.find(query)
+    if (collection1.count_documents(query) == 0):
+        collection1.insert_one({"_id": mongoID, "Riven_IDs": []})
+             
+    user = collection1.find(query)
     for result in user:
         IDs = result["Riven_IDs"]
 
     return IDs
 
-def getItemAttribute(string, type):
+def NotificationSetup():
+    if (collection2.count_documents(query) == 0):
+        PrimaryWeaponNames = []
+        SecondaryWeaponNames = []
+        MeleeWeaponName = []
+        MiscWeaponNames = []
 
-    rawItemjson = session.get("https://api.warframe.market/v1/riven/items").json()
+        field = 'init'
+        items = rawItemjson['payload']['items']
+
+        createNotifCollection(0, field, collection2, "primary", PrimaryWeaponNames, items)
+        createNotifCollection(0, field, collection3, "secondary", SecondaryWeaponNames, items)
+        createNotifCollection(0, field, collection4, "melee", MeleeWeaponName, items)
+        createNotifCollection(0, field, collection5, "misc", MiscWeaponNames, items)
+        
+         
+
+def getItemAttribute(string, type):
 
     items = rawItemjson['payload']['items']
     for item in items:
         if(item['url_name'] == string):
             return item[type]
+
+def createNotifCollection(value, field, collection, type, arr, items):
+    insertMongo(value, field, collection)
+
+    for item in items:
+        if(type == "misc"):
+            if(item['group'] == "zaw" or item['group'] == "sentinel" or item['group'] == "archgun" or item['group'] == "kitgun"):
+                arr.append(item['url_name'])
+        else:
+            if(item['group'] == type):
+                arr.append(item['url_name'])
+
+    for weapon in arr:
+            updateMongo([], weapon, collection)
+
+    
    
 
 def abbreviateStat(string, slot):
@@ -208,8 +270,11 @@ def getArrSize(arr):
     num = len(arr)
     return num
 
-def updateMongo(arr, field):
-    collection.update_one(query, { "$set": { field: arr } })
+def updateMongo(value, field, collection):
+    collection.update_one(query, { "$set": { field: value } })
+
+def insertMongo(value, field, collection):
+    collection.insert_one({"_id": mongoID, field: value})
 
 def getRawData():
     rawDatajson = session.get(url).json()
@@ -228,8 +293,8 @@ client.run('ODY4MTM3NjQyMzA5NTgyODU4.YPrSLw.ewZd22TCBkDTDMN-__QxwjhZ9uM')
 
 
 # Try to get values from Mongo - Doesn't Work
-    #if (collection.count_documents(query) == 1):
+    #if (collection1.count_documents(query) == 1):
         #updateMongo(rawItemjson, "Item_Data")
     
-    #weaponInfo = collection.find_one({ "_id": mongoID, "Item_Data.payload.items.item_name" : "Kulstar" },
+    #weaponInfo = collection1.find_one({ "_id": mongoID, "Item_Data.payload.items.item_name" : "Kulstar" },
     #{ "Item_Data.payload.items.$": 1 })['Item_Data']['payload']
