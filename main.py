@@ -16,6 +16,8 @@ from pymongo import MongoClient
 
 rawRivenIDs = []
 newRivenIDs = []
+fullListOfWeapons = []
+fullListOfCategories = []
 
 updateRivens = True
 mongoID = 170204
@@ -123,9 +125,6 @@ async def getNewRivens(channel1):
 
 
                 await channel1.send(embed=embed)
-            #await asyncio.sleep(.5)
-
-
 
         await asyncio.sleep(30)
 
@@ -133,7 +132,7 @@ async def getNewRivens(channel1):
 @client.command(name="add")
 async def _command(ctx):
     global times_used
-    await ctx.send(f"y or n")
+    await ctx.send(f"What weapon would you like to add to your watch list?")
 
     notificationSetup()
 
@@ -143,10 +142,10 @@ async def _command(ctx):
 
     msg = await client.wait_for("message")#, check=check)
     
-    msg.content.lower().replace(" ", "_")
-    
+    weaponExists(msg.content.lower())
 
-        #await ctx.send("You said no!")
+
+    #await ctx.send("You said no!")
         
 
 
@@ -163,7 +162,6 @@ async def _command(ctx):
 def getALLChannel():
     return client.get_channel(868140630491140137)
 
-
 def queryMongoForOldRivens():
     if (collection1.count_documents(query) == 0):
         collection1.insert_one({"_id": mongoID, "Riven_IDs": []})
@@ -175,6 +173,11 @@ def queryMongoForOldRivens():
     return IDs
 
 def notificationSetup():
+
+    for item in items:
+        fullListOfWeapons.append(item['url_name'])
+        fullListOfCategories.append(item['group'])
+
     if (collection2.count_documents(query) == 0):
         PrimaryWeaponNames = []
         SecondaryWeaponNames = []
@@ -188,21 +191,17 @@ def notificationSetup():
         createNotifCollection(0, field, collection4, "melee", MeleeWeaponName, items)
         createNotifCollection(0, field, collection5, "misc", MiscWeaponNames, items)
         
+def weaponExists(weaponName):
 
+    print(type(weaponName))
 
-
-
-
-
-
-def weaponExists():
-    print("Working...")
-
-
-
-
-
-
+    search1 = []
+    user = collection2.find(query)
+    for result in user:
+        search1 = result[weaponName]
+    updateMongo(["1", "2"], search1, collection2)
+    print(search1)
+    
 def getItemAttribute(string, type):
     for item in items:
         if(item['url_name'] == string):
@@ -210,7 +209,6 @@ def getItemAttribute(string, type):
 
 def createNotifCollection(value, field, collection, type, arr, theItems):
     insertMongo(value, field, collection)
-
     for item in theItems:
         if(type == "misc"):
             if(item['group'] == "zaw" or item['group'] == "sentinel" or item['group'] == "archgun" or item['group'] == "kitgun"):
@@ -218,11 +216,9 @@ def createNotifCollection(value, field, collection, type, arr, theItems):
         else:
             if(item['group'] == type):
                 arr.append(item['url_name'])
-
     for weapon in arr:
             updateMongo([], weapon, collection)
 
- 
 def abbreviateStat(string, slot):
 
     #result = string
@@ -289,6 +285,8 @@ def getRawData():
 @client.command()
 async def info(channel):
     client.loop.create_task(getNewRivens(channel))
+    #print("h")
+
 
 
 
