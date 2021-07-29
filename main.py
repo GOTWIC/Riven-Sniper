@@ -27,7 +27,7 @@ query = {"_id": mongoID}
 url = "https://api.warframe.market/v1/auctions?type=rivens"
 session = HTMLSession()
 client = commands.Bot(command_prefix='.')
-channel1 = channel
+allRivenChannel = channel
 rawItemjson = session.get("https://api.warframe.market/v1/riven/items").json()
 items = rawItemjson['payload']['items']
 
@@ -46,8 +46,9 @@ async def on_ready():
     print('| ~~ Logged in as ' + client.user.name + ' ~~ |')
     print('|\---~---~---~---~---~---~---~---/|\n\n')
     await info(getALLChannel())
+    buildNotificationCollections()
 
-async def getNewRivens(channel1):
+async def getNewRivens(allRivenChannel):
     while updateRivens:
         
         oldRivenIDs = queryMongoForOldRivens()
@@ -74,7 +75,7 @@ async def getNewRivens(channel1):
                 #description = 'This is a description',
                 color = discord.Color.purple()
             )
-            await channel1.send(embed=embed)
+            await allRivenChannel.send(embed=embed)
 
         else:
             for item in range(numberOfRivens):
@@ -125,37 +126,38 @@ async def getNewRivens(channel1):
                 #embed.add_field(name='Auction Link', value="Click [here]" + auctionUrl + " to go to auction", inline=True)
 
 
-                await channel1.send(embed=embed)
+                await allRivenChannel.send(embed=embed)
 
         await asyncio.sleep(30)
 
-
 @client.command(name="add")
-async def _command(ctx, arg):
-
-    
-    await ctx.send("What weapon would you like to add to your watch list?")
-    
-    notificationSetup()
-
-    def check(msg):
-        return msg.author == ctx.author and msg.channel == ctx.channel and \
-        weaponExists(msg.content.lower().replace(" ","_")) == True
-
-    msg = await client.wait_for(("message"), check=check)
-
-    weaponName = msg.content
-    weaponMongoFormat = weaponName.lower().replace(" ","_")
-
-    print(msg.content.lower().replace(" ","_"))
-
-    if(addUserToList(getWeaponCollection(weaponMongoFormat), weaponMongoFormat, msg.author.id)):
-        await ctx.send(msg.content.title() + " has been added your watch list")
-
+async def _add(ctx, *, args):
+    if(args == ""):
+        await sendSimpleEmbed("You need to Input a Weapon Name!", ctx)
     else:
-        await ctx.send(msg.content.title() + " is already on your watch list")
-        
+        weaponMongoFormat = args.lower().replace(" ","_")    
+        if(weaponExists(weaponMongoFormat)):
+            if(addUserToList(getWeaponCollection(weaponMongoFormat), weaponMongoFormat, ctx.author.id)):
+                await sendSimpleEmbed(args.title() + " has been added your watch list!", ctx)
+            else:
+                await sendSimpleEmbed(args.title() + " is already on your watch list!", ctx)
+        else:
+            await sendSimpleEmbed("That weapon does not exist!", ctx)
 
+@client.command(name="remove")
+async def _remove(ctx, *, args):
+    if(args == ""):
+        await sendSimpleEmbed("You need to Input a Weapon Name!", ctx)
+    else:
+        weaponMongoFormat = args.lower().replace(" ","_")    
+        if(weaponExists(weaponMongoFormat)):
+            if(removeUserFromList(getWeaponCollection(weaponMongoFormat), weaponMongoFormat, ctx.author.id)):
+                await sendSimpleEmbed(args.title() + " has been removed your watch list!", ctx)
+            else:
+                await sendSimpleEmbed(args.title() + " is not on your watch list!", ctx)
+        else:
+            await sendSimpleEmbed("That weapon does not exist!", ctx)
+        
 
 #║╔═════════════════════════════════════════════════════════════════════════╗║#
 #║║ ███████╗██╗░░░██╗███╗░░██╗░█████╗░████████╗██╗░█████╗░███╗░░██╗░██████╗ ║║#
@@ -166,7 +168,13 @@ async def _command(ctx, arg):
 #║║ ╚═╝░░░░░░╚═════╝░╚═╝░░╚══╝░╚════╝░░░░╚═╝░░░╚═╝░╚════╝░╚═╝░░╚══╝╚═════╝░ ║║#
 #║╚═════════════════════════════════════════════════════════════════════════╝║#
 
-
+async def sendSimpleEmbed(string, channel):
+    embed = discord.Embed(
+                title = string,
+                color = discord.Color.purple()
+            )
+    await channel.send(embed=embed)
+   
 def getALLChannel():
     return client.get_channel(868140630491140137)
 
@@ -178,23 +186,22 @@ def queryMongoForOldRivens():
         IDs = result["Riven_IDs"]
     return IDs
 
-def notificationSetup():
-
+def buildNotificationCollections():
+    field = 'init'
     for item in items:
         fullListOfWeapons.append(item['url_name'])
         fullListOfCategories.append(item['group'])
-
     if (collection2.count_documents(query) == 0):
         PrimaryWeaponNames = []
-        SecondaryWeaponNames = []
-        MeleeWeaponName = []
-        MiscWeaponNames = []
-
-        field = 'init'
-
         createNotifCollection(0, field, collection2, "primary", PrimaryWeaponNames, items)
+    if (collection3.count_documents(query) == 0):
+        SecondaryWeaponNames = []
         createNotifCollection(0, field, collection3, "secondary", SecondaryWeaponNames, items)
+    if (collection4.count_documents(query) == 0):
+        MeleeWeaponName = []
         createNotifCollection(0, field, collection4, "melee", MeleeWeaponName, items)
+    if (collection5.count_documents(query) == 0):
+        MiscWeaponNames = []
         createNotifCollection(0, field, collection5, "misc", MiscWeaponNames, items)
         
 def weaponExists(weaponName):  
@@ -226,15 +233,18 @@ def addUserToList(collection, weaponName, authorID):
         sublist.append(authorID)
         updateMongo(sublist, weaponName, collection)
         return True  
-           
-# Not Integrated
-async def raiseErrorException(string, channel):
-    embed = discord.Embed(
-                title = string,
-                color = discord.Color.purple()
-            )
-    await channel.send(embed=embed)
-    
+
+def removeUserFromList(collection, weaponName, authorID):
+    mongoWeaponList = collection.find(query)
+    for weapon in mongoWeaponList:
+        sublist = weapon[weaponName]
+    if(authorID in sublist):
+        sublist.remove(authorID)
+        updateMongo(sublist, weaponName, collection)
+        return True
+    else:
+        return False
+ 
 def getItemAttribute(string, type):
     for item in items:
         if(item['url_name'] == string):
@@ -318,9 +328,6 @@ def getRawData():
 @client.command()
 async def info(channel):
     client.loop.create_task(getNewRivens(channel))
-
-
-
 
 
 client.run('ODY4MTM3NjQyMzA5NTgyODU4.YPrSLw.ewZd22TCBkDTDMN-__QxwjhZ9uM')
