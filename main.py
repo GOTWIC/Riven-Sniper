@@ -1,5 +1,6 @@
 import os
 import json
+from re import sub
 import pymongo
 from discord import channel
 from discord.client import Client
@@ -130,22 +131,29 @@ async def getNewRivens(channel1):
 
 
 @client.command(name="add")
-async def _command(ctx):
-    global times_used
-    await ctx.send(f"What weapon would you like to add to your watch list?")
+async def _command(ctx, arg):
 
+    
+    await ctx.send("What weapon would you like to add to your watch list?")
+    
     notificationSetup()
 
-    #def check(msg):
-    #    return msg.author == ctx.author and msg.channel == ctx.channel and \
-    #    msg.content.lower() in ["y", "n"]
+    def check(msg):
+        return msg.author == ctx.author and msg.channel == ctx.channel and \
+        weaponExists(msg.content.lower().replace(" ","_")) == True
 
-    msg = await client.wait_for("message")#, check=check)
-    
-    weaponExists(msg.content.lower())
+    msg = await client.wait_for(("message"), check=check)
 
+    weaponName = msg.content
+    weaponMongoFormat = weaponName.lower().replace(" ","_")
 
-    #await ctx.send("You said no!")
+    print(msg.content.lower().replace(" ","_"))
+
+    if(addUserToList(getWeaponCollection(weaponMongoFormat), weaponMongoFormat, msg.author.id)):
+        await ctx.send(msg.content.title() + " has been added your watch list")
+
+    else:
+        await ctx.send(msg.content.title() + " is already on your watch list")
         
 
 
@@ -164,12 +172,10 @@ def getALLChannel():
 
 def queryMongoForOldRivens():
     if (collection1.count_documents(query) == 0):
-        collection1.insert_one({"_id": mongoID, "Riven_IDs": []})
-             
+        collection1.insert_one({"_id": mongoID, "Riven_IDs": []})          
     user = collection1.find(query)
     for result in user:
         IDs = result["Riven_IDs"]
-
     return IDs
 
 def notificationSetup():
@@ -191,16 +197,43 @@ def notificationSetup():
         createNotifCollection(0, field, collection4, "melee", MeleeWeaponName, items)
         createNotifCollection(0, field, collection5, "misc", MiscWeaponNames, items)
         
-def weaponExists(weaponName):
+def weaponExists(weaponName):  
+    if(weaponName in fullListOfWeapons):
+        return True
+    else:
+        return False
 
-    print(type(weaponName))
+def getWeaponCollection(weaponName):  
 
-    search1 = []
-    user = collection2.find(query)
-    for result in user:
-        search1 = result[weaponName]
-    updateMongo(["1", "2"], search1, collection2)
-    print(search1)
+    weaponSlot = fullListOfCategories[fullListOfWeapons.index(weaponName)]
+
+    if(weaponSlot == "primary"):
+        return collection2
+    elif(weaponSlot == "secondary"):
+        return collection3
+    elif(weaponSlot == "melee"):
+        return collection4
+    else:
+        return collection5
+
+def addUserToList(collection, weaponName, authorID):
+    mongoWeaponList = collection.find(query)
+    for weapon in mongoWeaponList:
+        sublist = weapon[weaponName]
+    if(authorID in sublist):
+        return False
+    else:
+        sublist.append(authorID)
+        updateMongo(sublist, weaponName, collection)
+        return True  
+           
+# Not Integrated
+async def raiseErrorException(string, channel):
+    embed = discord.Embed(
+                title = string,
+                color = discord.Color.purple()
+            )
+    await channel.send(embed=embed)
     
 def getItemAttribute(string, type):
     for item in items:
@@ -285,7 +318,6 @@ def getRawData():
 @client.command()
 async def info(channel):
     client.loop.create_task(getNewRivens(channel))
-    #print("h")
 
 
 
