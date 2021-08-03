@@ -67,11 +67,6 @@ async def getNewRivens():
         if(numberOfRivens != 0):
             for item in range(numberOfRivens):
 
-                # Initialization of variables and arrays
-                # Get information from API and store info
-                # Create and return embed
-                # Use certain characteristics to find the right channel to post in
-
                 index = numberOfRivens - (item + 1)
                 auction = auctions[index]
                 rivenStats = ["", "", "", ""]
@@ -108,7 +103,7 @@ async def getNewRivens():
 
                 rivenEmbed = createRivenEmbed(weaponName, rivenName, auctionURL, seller, icon, auctionInfo, rivenStats)
 
-                await sendRivenEmbed(rivenEmbed, rolls)
+                await sendRivenEmbed(rivenEmbed, rolls, weaponName)
 
                 
 
@@ -159,11 +154,20 @@ async def sendSimpleEmbed(string, channel):
             )
     await channel.send(embed=embed)
    
-async def sendRivenEmbed(embed, rolls):
+async def sendRivenEmbed(embed, rolls, weaponName):
     await client.get_channel(channels[0]).send(embed=embed)
 
     if(rolls == 0):
         await client.get_channel(channels[1]).send(embed=embed)
+
+    weapons = getWeaponCollection(weaponName).find(query)
+    for weapon in weapons:
+        notifList = weapon[weaponName]
+    
+    if(len(notifList)!=0):
+        #await client.send_message(473517971529138201, 'boop')
+        #await client.get_user(473517971529138201).send("YOUR TEXT")
+        print("sent")
 
    
 
