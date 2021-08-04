@@ -1,6 +1,7 @@
 import os
 import json
 from re import sub
+from discord.guild import Guild
 import pymongo
 from discord import channel
 from discord.client import Client
@@ -15,6 +16,12 @@ import asyncio
 from pymongo import MongoClient
 
 
+intents = discord.Intents.default()
+intents.typing = False
+intents.presences = False
+intents = discord.Intents(messages=True, guilds=True)
+
+
 rawRivenIDs = []
 newRivenIDs = []
 fullListOfWeapons = []
@@ -26,7 +33,7 @@ query = {"_id": mongoID}
 
 url = "https://api.warframe.market/v1/auctions?type=rivens"
 session = HTMLSession()
-client = commands.Bot(command_prefix='.')
+client = commands.Bot(command_prefix='.', intents=intents)
 allRivensChannel = channel
 rawItemjson = session.get("https://api.warframe.market/v1/riven/items").json()
 items = rawItemjson['payload']['items']
@@ -40,6 +47,7 @@ collection2 = db["Riven_Notification_List_Primaries"]
 collection3 = db["Riven_Notification_List_Secondaries"]
 collection4 = db["Riven_Notification_List_Melees"]
 collection5 = db["Riven_Notification_List_Miscellaneous"]
+collection6 = db["Notification_Settings"]
 
 
 @client.event
@@ -111,7 +119,7 @@ async def getNewRivens():
 
 @client.command(name="add")
 async def _add(ctx, *, args):
-    if(args == ""):
+    if(args == None):
         await sendSimpleEmbed("You need to Input a Weapon Name!", ctx)
     else:
         weaponMongoFormat = args.lower().replace(" ","_")    
@@ -125,7 +133,7 @@ async def _add(ctx, *, args):
 
 @client.command(name="remove")
 async def _remove(ctx, *, args):
-    if(args == ""):
+    if(args == None):
         await sendSimpleEmbed("You need to Input a Weapon Name!", ctx)
     else:
         weaponMongoFormat = args.lower().replace(" ","_")    
@@ -165,9 +173,9 @@ async def sendRivenEmbed(embed, rolls, weaponName):
         notifList = weapon[weaponName]
     
     if(len(notifList)!=0):
-        #await client.send_message(473517971529138201, 'boop')
-        #await client.get_user(473517971529138201).send("YOUR TEXT")
-        print("sent")
+        for userID in notifList:
+            user = await client.fetch_user(userID)      
+            await user.send(embed=embed)
 
    
 
@@ -186,7 +194,11 @@ def createRivenEmbed(weaponName, rivenName, auctionURL, seller, thumbnail, aucti
 
 def queryMongoForOldRivens():
     if (collection1.count_documents(query) == 0):
-        collection1.insert_one({"_id": mongoID, "Riven_IDs": []})          
+        collection1.insert_one({"_id": mongoID, "Riven_IDs": []})
+    if (collection1.count_documents(query) == 1):
+
+        
+        updateMongo([], "Weapon Name", collection1)
     user = collection1.find(query)
     for result in user:
         IDs = result["Riven_IDs"]
