@@ -14,6 +14,8 @@ import discord
 from discord.ext import commands
 import asyncio
 from pymongo import MongoClient
+import re
+from bs4 import BeautifulSoup
 
 
 intents = discord.Intents.default()
@@ -22,7 +24,7 @@ intents.presences = False
 intents = discord.Intents(messages=True, guilds=True)
 
 
-rawRivenIDs = []
+WFM_rawRivenIDs = []
 newRivenIDs = []
 fullListOfWeapons = []
 fullListOfCategories = []
@@ -31,15 +33,19 @@ updateRivens = True
 mongoID = 170204
 query = {"_id": mongoID}
 
-url = "https://api.warframe.market/v1/auctions?type=rivens"
-session = HTMLSession()
+WFM_url = "https://api.warframe.market/v1/auctions?type=rivens"
+RM_url = ""
+WFM_session = HTMLSession()
+RM_session = HTMLSession()
 client = commands.Bot(command_prefix='.', intents=intents)
-allRivensChannel = channel
-rawItemjson = session.get("https://api.warframe.market/v1/riven/items").json()
+# Universal Item Info
+rawItemjson = WFM_session.get("https://api.warframe.market/v1/riven/items").json()
 items = rawItemjson['payload']['items']
+
+# Indexes: All Rivens, Unrolled Rivens
 channels = [868140630491140137, 870140373723394058]
 
-
+# Mongo
 cluster = MongoClient("mongodb+srv://GOTWIC:Swagnik10Caesar12_MED@cluster1.mu094.mongodb.net/test?ssl=true&ssl_cert_reqs=CERT_NONE")
 db = cluster["Riven_Sniper_Database"]
 collection1 = db["Old_Riven_Log"]
@@ -58,20 +64,24 @@ async def on_ready():
     await info()
     buildNotificationCollections()
 
-async def getNewRivens():
+async def mainCycle():
     while updateRivens:
         
-        oldRivenIDs = queryMongoForOldRivens()
-        rawDatajson = getRawData()
-        auctions = rawDatajson['payload']['auctions']
-        rawRivenIDs = []
+        #auctins, numberofrivs = getNewRivensFromWFM()
+
+
+        WFM_oldRivenIDs = queryMongoForOldRivens()
+        WFM_rawDatajson = getRawData()
+        auctions = WFM_rawDatajson['payload']['auctions']
+        WFM_rawRivenIDs = []
         for id in auctions: 
-           rawRivenIDs.append(id['id'])
-        newRivenIDs = [x for x in rawRivenIDs if x not in set(oldRivenIDs)]
+           WFM_rawRivenIDs.append(id['id'])
+        newRivenIDs = [x for x in WFM_rawRivenIDs if x not in set(WFM_oldRivenIDs)]
         field = "Riven_IDs"
-        updateMongo(rawRivenIDs, field, collection1) 
+        updateMongo(WFM_rawRivenIDs, field, collection1) 
         numberOfRivens = getArrSize(newRivenIDs)
 
+        # Warframe Market
         if(numberOfRivens != 0):
             for item in range(numberOfRivens):
 
@@ -81,7 +91,7 @@ async def getNewRivens():
                 statCount = 0
                 auctionInfo = ""
 
-                if(auctions[index]['item']['type'] == "sister" or auctions[index]['item']['type'] == "lich"):
+                if(auction['item']['type'] == "sister" or auction['item']['type'] == "lich"):
                     continue
 
                 riven = auction['item']
@@ -113,37 +123,49 @@ async def getNewRivens():
 
                 await sendRivenEmbed(rivenEmbed, rolls, weaponName)
 
+        # Riven Market
                 
 
         await asyncio.sleep(30)
 
 @client.command(name="add")
 async def _add(ctx, *, args):
+
     if(args == None):
-        await sendSimpleEmbed("You need to Input a Weapon Name!", ctx)
+        await sendSimpleEmbed("You need to Input a Weapon Name!", "", ctx)
     else:
         weaponMongoFormat = args.lower().replace(" ","_")    
         if(weaponExists(weaponMongoFormat)):
-            if(addUserToList(getWeaponCollection(weaponMongoFormat), weaponMongoFormat, ctx.author.id)):
-                await sendSimpleEmbed(args.title() + " has been added your watch list!", ctx)
+            if(addUserToWeaponList(getWeaponCollection(weaponMongoFormat), weaponMongoFormat, ctx.author.id)):
+                if(userExists(ctx.author.id) == False):
+                    await sendSimpleEmbed("Looks like this is the first time you are adding a riven to your watch list! Where you like to be notified of new rivens?", " - Direct Messages \n - This Channel \n - Both", ctx.channel)  
+                    def is_correct(m):
+                        return m.author == ctx.author and m.content.lower() == "both" or m.content.lower() == "direct messages" or m.content.lower() == "this channel"#m.content.isdigit()
+                    notifPref = await client.wait_for('message', check=is_correct, timeout=60.0)
+                    addToUserList(ctx.author.id, ctx.channel.id, notifPref.content)
+                    if(notifPref.content != "both"):
+                        await sendSimpleEmbed("You will be notified via " + str(notifPref.content), "You can change this setting at anytime using [UNDER DEVELOPMENT]", ctx.channel)
+                    else:
+                        await sendSimpleEmbed("You will now be notified via DMs and this channel", "You can change this setting at anytime using [UNDER DEVELOPMENT]", ctx.channel)
+                await sendSimpleEmbed(args.title() + " has been added your watch list!", "", ctx)
             else:
-                await sendSimpleEmbed(args.title() + " is already on your watch list!", ctx)
+                await sendSimpleEmbed(args.title() + " is already on your watch list!", "", ctx)
         else:
-            await sendSimpleEmbed("That weapon does not exist!", ctx)
+            await sendSimpleEmbed("That weapon does not exist!", "", ctx)
 
 @client.command(name="remove")
 async def _remove(ctx, *, args):
     if(args == None):
-        await sendSimpleEmbed("You need to Input a Weapon Name!", ctx)
+        await sendSimpleEmbed("You need to Input a Weapon Name!", "", ctx)
     else:
         weaponMongoFormat = args.lower().replace(" ","_")    
         if(weaponExists(weaponMongoFormat)):
-            if(removeUserFromList(getWeaponCollection(weaponMongoFormat), weaponMongoFormat, ctx.author.id)):
-                await sendSimpleEmbed(args.title() + " has been removed your watch list!", ctx)
+            if(removeUserFromWeaponList(getWeaponCollection(weaponMongoFormat), weaponMongoFormat, ctx.author.id)):
+                await sendSimpleEmbed(args.title() + " has been removed your watch list!", "", ctx)
             else:
-                await sendSimpleEmbed(args.title() + " is not on your watch list!", ctx)
+                await sendSimpleEmbed(args.title() + " is not on your watch list!", "", ctx)
         else:
-            await sendSimpleEmbed("That weapon does not exist!", ctx)
+            await sendSimpleEmbed("That weapon does not exist!", "", ctx)
         
 
 #║╔═════════════════════════════════════════════════════════════════════════╗║#
@@ -155,29 +177,25 @@ async def _remove(ctx, *, args):
 #║║ ╚═╝░░░░░░╚═════╝░╚═╝░░╚══╝░╚════╝░░░░╚═╝░░░╚═╝░╚════╝░╚═╝░░╚══╝╚═════╝░ ║║#
 #║╚═════════════════════════════════════════════════════════════════════════╝║#
 
-async def sendSimpleEmbed(string, channel):
+async def sendSimpleEmbed(title1, description1, channel):
     embed = discord.Embed(
-                title = string,
+                title = title1,
+                description = description1,
                 color = discord.Color.purple()
             )
     await channel.send(embed=embed)
    
 async def sendRivenEmbed(embed, rolls, weaponName):
     await client.get_channel(channels[0]).send(embed=embed)
-
     if(rolls == 0):
         await client.get_channel(channels[1]).send(embed=embed)
-
     weapons = getWeaponCollection(weaponName).find(query)
     for weapon in weapons:
         notifList = weapon[weaponName]
-    
     if(len(notifList)!=0):
         for userID in notifList:
             user = await client.fetch_user(userID)      
             await user.send(embed=embed)
-
-   
 
 def createRivenEmbed(weaponName, rivenName, auctionURL, seller, thumbnail, auctionInfo, rivenStats):
     embed = discord.Embed(
@@ -195,10 +213,11 @@ def createRivenEmbed(weaponName, rivenName, auctionURL, seller, thumbnail, aucti
 def queryMongoForOldRivens():
     if (collection1.count_documents(query) == 0):
         collection1.insert_one({"_id": mongoID, "Riven_IDs": []})
-    if (collection1.count_documents(query) == 1):
-
-        
-        updateMongo([], "Weapon Name", collection1)
+    if (collection1.count_documents(query) == 0):
+        #collection1.insert_one({"_id": mongoID, "Item_Data": rawItemjson})
+        updateMongo(rawItemjson, "Item_Data", collection1)
+        #for item in items:
+        #    updateMongo(item, item['url_name'], collection1)
     user = collection1.find(query)
     for result in user:
         IDs = result["Riven_IDs"]
@@ -241,7 +260,7 @@ def getWeaponCollection(weaponName):
     else:
         return collection5
 
-def addUserToList(collection, weaponName, authorID):
+def addUserToWeaponList(collection, weaponName, authorID):
     mongoWeaponList = collection.find(query)
     for weapon in mongoWeaponList:
         sublist = weapon[weaponName]
@@ -252,7 +271,7 @@ def addUserToList(collection, weaponName, authorID):
         updateMongo(sublist, weaponName, collection)
         return True  
 
-def removeUserFromList(collection, weaponName, authorID):
+def removeUserFromWeaponList(collection, weaponName, authorID):
     mongoWeaponList = collection.find(query)
     for weapon in mongoWeaponList:
         sublist = weapon[weaponName]
@@ -340,22 +359,52 @@ def insertMongo(value, field, collection):
     collection.insert_one({"_id": mongoID, field: value})
 
 def getRawData():
-    rawDatajson = session.get(url).json()
-    return rawDatajson
+    WFM_rawDatajson = WFM_session.get(WFM_url).json()
+    return WFM_rawDatajson
+
+def userExists(userID):
+    if collection6.count_documents({ '_id': userID }, limit = 1) == 0:
+        return False
+    return True
+
+def addToUserList(userID, channelID, preference):
+    collection6.insert_one({"_id": userID, "UserInfo": [channelID, preference, [], []]})
+    print(channelID)
+    print(type(channelID))
+
+
 
 @client.command()
 async def info():
-    client.loop.create_task(getNewRivens())
+    client.loop.create_task(mainCycle())
 
 
 client.run('ODY4MTM3NjQyMzA5NTgyODU4.YPrSLw.ewZd22TCBkDTDMN-__QxwjhZ9uM')
 
 
+# collection6 Structure - 
+#    User Info: 
+#       [
+#           channel number,
+#           "Notification Preference (dms, channel, both)",,
+#           [List of subscribed weapons], 
+#           [List of subscribed stats]
+#       ]
 
 
-# Try to get values from Mongo - Doesn't Work
-    #if (collection1.count_documents(query) == 1):
-        #updateMongo(rawItemjson, "Item_Data")
-    
-    #weaponInfo = collection1.find_one({ "_id": mongoID, "Item_Data.payload.items.item_name" : "Kulstar" },
-    #{ "Item_Data.payload.items.$": 1 })['Item_Data']['payload']
+
+# Try to get values from Mongo - Kind of works, can directly search test instead of aggregating
+#   test = collection1.find_one({ "_id": mongoID, "Item_Data.payload.items.item_name" : "Kulstar" },
+#    { "Item_Data.payload.items.$": 1 })['Item_Data']['payload']['items']
+#
+#    test1 = str(list(collection1.aggregate([{"$match": {"Item_Data.payload.items.item_name": "Kulstar"},},{"$unwind": "$Item_Data.payload.items"},{"$match": {"Item_Data.payload.items.item_name": "Kulstar"},},{"$project": {"url_name": "$Item_Data.payload.items.url_name"}}])))
+#    test2 = re.search("'url_name': '(.*?)'", test1).group(1)
+#    print(test1)
+#    print(test2)
+
+#    test3 = str(list(collection1.aggregate([{"$match": {"Item_Data.payload.items.item_name": "Kulstar"},},{"$unwind": "$Item_Data.payload.items"},{"$match": {"Item_Data.payload.items.item_name": "Kulstar"},},{"$group": { "_id": "$_id", "testField": { "$addToSet": "$Item_Data.payload.items.testField" } }, }])))
+#    test4 = re.search("'testField': [['(.*?)'", str(list(test))).group(1) # Does not work for some reason
+#    print(test3)
+#    print(test4)
+
+
