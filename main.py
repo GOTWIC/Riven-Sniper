@@ -1,6 +1,7 @@
 import os
 import json
 from re import sub
+from discord.abc import User
 from discord.guild import Guild
 import pymongo
 from discord import channel
@@ -131,41 +132,53 @@ async def mainCycle():
 @client.command(name="add")
 async def _add(ctx, *, args):
 
-    if(args == None):
-        await sendSimpleEmbed("You need to Input a Weapon Name!", "", ctx)
+    if(userExists(ctx.author.id) == False):
+        await sendSimpleEmbed("You first need to setup your notifications using the <.setup notifications> command!", "", ctx.channel)
     else:
         weaponMongoFormat = args.lower().replace(" ","_")    
         if(weaponExists(weaponMongoFormat)):
             if(addUserToWeaponList(getWeaponCollection(weaponMongoFormat), weaponMongoFormat, ctx.author.id)):
-                if(userExists(ctx.author.id) == False):
-                    await sendSimpleEmbed("Looks like this is the first time you are adding a riven to your watch list! Where you like to be notified of new rivens?", " - Direct Messages \n - This Channel \n - Both", ctx.channel)  
-                    def is_correct(m):
-                        return m.author == ctx.author and m.content.lower() == "both" or m.content.lower() == "direct messages" or m.content.lower() == "this channel"#m.content.isdigit()
-                    notifPref = await client.wait_for('message', check=is_correct, timeout=60.0)
-                    addToUserList(ctx.author.id, ctx.channel.id, notifPref.content)
-                    if(notifPref.content != "both"):
-                        await sendSimpleEmbed("You will be notified via " + str(notifPref.content), "You can change this setting at anytime using [UNDER DEVELOPMENT]", ctx.channel)
-                    else:
-                        await sendSimpleEmbed("You will now be notified via DMs and this channel", "You can change this setting at anytime using [UNDER DEVELOPMENT]", ctx.channel)
-                await sendSimpleEmbed(args.title() + " has been added your watch list!", "", ctx)
+                await sendSimpleEmbed(args.title() + " has been added your watch list!", "", ctx.channel)
             else:
-                await sendSimpleEmbed(args.title() + " is already on your watch list!", "", ctx)
+                await sendSimpleEmbed(args.title() + " is already on your watch list!", "", ctx.channel)
         else:
-            await sendSimpleEmbed("That weapon does not exist!", "", ctx)
+            await sendSimpleEmbed("That weapon does not exist!", "", ctx.channel)
 
 @client.command(name="remove")
 async def _remove(ctx, *, args):
     if(args == None):
-        await sendSimpleEmbed("You need to Input a Weapon Name!", "", ctx)
+        await sendSimpleEmbed("You need to Input a Weapon Name!", "", ctx.channel)
     else:
         weaponMongoFormat = args.lower().replace(" ","_")    
         if(weaponExists(weaponMongoFormat)):
             if(removeUserFromWeaponList(getWeaponCollection(weaponMongoFormat), weaponMongoFormat, ctx.author.id)):
-                await sendSimpleEmbed(args.title() + " has been removed your watch list!", "", ctx)
+                await sendSimpleEmbed(args.title() + " has been removed your watch list!", "", ctx.channel)
             else:
-                await sendSimpleEmbed(args.title() + " is not on your watch list!", "", ctx)
+                await sendSimpleEmbed(args.title() + " is not on your watch list!", "", ctx.channel)
         else:
-            await sendSimpleEmbed("That weapon does not exist!", "", ctx)
+            await sendSimpleEmbed("That weapon does not exist!", "", ctx.channel)
+
+@client.command(name="update")
+async def _update(ctx, *, args):
+
+    if(userExists(ctx.author.id) == False):
+        await sendSimpleEmbed("You first need to setup your notifications using the <.setup notifications> command!", "", ctx.channel)
+    else:
+        if(args.lower() == "channel"):
+            if(getUserInfo(ctx.author.id, 0) != ctx.channel.id):
+                oldChannel = getUserInfo(ctx.author.id, 0)
+                collection6.update_one({"_id": ctx.author.id, "UserInfo": oldChannel}, { "$set": { "UserInfo.$": ctx.channel.id } })
+                await sendSimpleEmbed("Updated Channel!", "", ctx.channel)
+            else:
+                await sendSimpleEmbed("This channel is already your default channel!", "", ctx.channel)
+        if(args.lower() == "notifications"):
+            await changeUserInfo(ctx, 1)
+
+@client.command(name="setup")
+async def _setup(ctx, *, args):
+    if(args.lower() == "notifications"):
+        if(userExists(ctx.author.id) == False):
+            await changeUserInfo(ctx, 0)
         
 
 #║╔═════════════════════════════════════════════════════════════════════════╗║#
@@ -194,8 +207,15 @@ async def sendRivenEmbed(embed, rolls, weaponName):
         notifList = weapon[weaponName]
     if(len(notifList)!=0):
         for userID in notifList:
-            user = await client.fetch_user(userID)      
-            await user.send(embed=embed)
+            if(getUserInfo(userID, 1) == "direct messages"):
+                user = await client.fetch_user(userID)      
+                await user.send(embed=embed)
+            elif(getUserInfo(userID, 1) == "this channel"):
+                await client.get_channel(getUserInfo(userID, 0)).send(embed=embed)
+            elif(getUserInfo(userID, 1) == "both"):
+                user = await client.fetch_user(userID)      
+                await user.send(embed=embed)
+                await client.get_channel(getUserInfo(userID, 0)).send(embed=embed)
 
 def createRivenEmbed(weaponName, rivenName, auctionURL, seller, thumbnail, auctionInfo, rivenStats):
     embed = discord.Embed(
@@ -369,14 +389,31 @@ def userExists(userID):
 
 def addToUserList(userID, channelID, preference):
     collection6.insert_one({"_id": userID, "UserInfo": [channelID, preference, [], []]})
-    print(channelID)
-    print(type(channelID))
 
+def getUserInfo(userID, selectionNumber):
+    user = collection6.find({"_id": userID})
+    for result in user:
+        return result["UserInfo"][selectionNumber]
 
+async def changeUserInfo(ctx, num):
+    await sendSimpleEmbed("Where you like to be notified of new rivens?", " - Direct Messages \n - This Channel \n - Both", ctx.channel)  
+    def is_correct(m):
+        return m.author == ctx.author and m.content.lower() == "both" or m.content.lower() == "direct messages" or m.content.lower() == "this channel"#m.content.isdigit()
+    notifPref = await client.wait_for('message', check=is_correct, timeout=60.0)
+    if(num == 0):
+        addToUserList(ctx.author.id, ctx.channel.id, notifPref.content)
+    elif(num == 1):
+        collection6.update_one({"_id": ctx.author.id, "UserInfo": getUserInfo(ctx.author.id, 1)}, { "$set": { "UserInfo.$": notifPref.content } })
+    if(notifPref.content != "both"):
+        await sendSimpleEmbed("You will be notified via " + str(notifPref.content), "You can change this setting at anytime using the <.update notifications> command \n This channel has been designated as your private channel. You can make another channel you private channel using the <.update channel> command.", ctx.channel)
+    else:
+        await sendSimpleEmbed("You will now be notified via DMs and this channel", "You can change this setting at anytime using the <.update notifications> command \n This channel has been designated as your private channel. You can make another channel you private channel using the <.update channel> command.", ctx.channel)        
 
 @client.command()
 async def info():
     client.loop.create_task(mainCycle())
+
+
 
 
 client.run('ODY4MTM3NjQyMzA5NTgyODU4.YPrSLw.ewZd22TCBkDTDMN-__QxwjhZ9uM')
