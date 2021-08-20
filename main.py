@@ -125,14 +125,16 @@ async def mainCycle():
                     auctionInfo = 'Starting Price: ' + str(auction['starting_price']) + "\n Buyout Price: " + buyout + "\n Top Bid: " + topBid
                 for stat in riven['attributes']:
                     rawStat = stat['url_name'].replace("_", " ").title()
-                    rivenStats[statCount] = abbreviateStat(rawStat, slot)  + ": " + str(stat['value'])
-                    rivenAttributeList.append(abbreviateStat(rawStat, slot))
+                    rivenStats[statCount] = abbreviateStatBOT(rawStat, slot)  + ": " + str(stat['value'])
+                    rivenAttributeList.append(abbreviateStatBOT(rawStat, slot))
                     if(stat['positive'] == False):
                         negative = True
                     statCount += 1 
                 encodedID = encodeRiven(weaponName, rivenAttributeList, negative, 0)
                 rivenEmbed = createRivenEmbed(weaponName, rivenName, auctionURL, seller, icon, auctionInfo, rivenStats, encodedID)
                 await sendRivenEmbed(rivenEmbed, rolls, weaponName, encodedID)
+
+                await asyncio.sleep(.5)
 
         # Riven Market
                 
@@ -148,16 +150,17 @@ async def _add(ctx, *, arg):
         if "|" in arg:
             args = arg.split(" | ", 1)
             weapon = args[0]
-            stat = args[1]
+            rawStat = args[1]
             weaponMongoFormat = weapon.lower().replace(" ","_")    
             if(weaponExists(weaponMongoFormat) or weapon == "#"):
                 if(weapon == "#"):
                     weaponMongoFormat = ""
-                stats = stat.split(" , ")
+                rawStats = rawStat.split(",")
                 flag = False
                 negative = False
+                stats = abbreviateStatUSER(rawStats)
                 for item in range(len(stats)):
-                    stats[item] = stats[item].title()
+                    #stats[item] = stats[item].title()
                     if("-" in stats[item]):
                         stats[item] = stats[item].replace("-", "")
                         negative = True
@@ -165,8 +168,10 @@ async def _add(ctx, *, arg):
                         flag = True
                         print(stats[item])
                 if(flag == False):
+                    await sendSimpleEmbed("One or more of the stats do not exist or were mispelled.", "", ctx.channel)
+                else:
                     encodedID = encodeRiven(weaponMongoFormat, stats, negative, 0)
-                    print(hex(encodedID))
+                    addIDToUserInfo(ctx.author.ID, encodedID)
             else:
                 await sendSimpleEmbed("That weapon does not exist!", "", ctx.channel)
             
@@ -344,10 +349,15 @@ def addUserToWeaponList(collection, weaponName, userID):
         addWeaponToUserInfo(userID, weaponName)
         return True  
 
-def addWeaponToUserInfo(userID, weaponName):
+def addWeaponToUserInfo(userID, weaponName):  
     listOfWeapons = getUserInfo(userID, 2)
     listOfWeapons.append(weaponName)
     collection6.update_one({"_id": userID, "UserInfo": getUserInfo(userID, 2)}, { "$set": { "UserInfo.$": listOfWeapons} })
+
+def addIDToUserInfo(userID, encodedID):
+    listOfEncodedIDs = getUserInfo(userID, 3)
+    listOfEncodedIDs.append(encodedID)
+    collection6.update_one({"_id": userID, "UserInfo": getUserInfo(userID, 3)}, { "$set": { "UserInfo.$": listOfEncodedIDs} })
 
 def removeUserFromWeaponList(collection, weaponName, userID):
     mongoWeaponList = collection.find(query)
@@ -383,7 +393,7 @@ def createNotifCollection(value, field, collection, type, arr, theItems):
     for weapon in arr:
             updateMongo([], weapon, collection)
 
-def abbreviateStat(string, slot):
+def abbreviateStatBOT(string, slot):
     result = string
 
     if(string == 'Base Damage / Melee Damage'):
@@ -427,6 +437,33 @@ def abbreviateStat(string, slot):
         result = "Infested"
     
     return result
+
+def abbreviateStatUSER(stats):
+    result = []
+    for stat in stats:
+        s = stat.lower()
+        if("-" in s):
+            s = s.replace("-", "")
+        if(stat[0] == " "):
+            s[0] = ''
+        if(stat[len(stat)-1] == 0):
+            s[len(stat)-1] == ''
+        
+        if(s == "cc" or s == "crit chance"):
+            s == "critical chance"
+        if(s == "cd" or s == "crit damage" or s == "crit dmg"):
+            s == "critical damage"
+        if(s == "fr"):
+            s == "fire rate"
+        if(s == "ammo maximum"):
+            s == "ammo max"
+        if(s == "as" or s == "atk speed"):
+            s == "attack speed"
+        if(s == "combo eff" or s == "atk speed"):
+            s == "combo efficiency"
+
+        result.append(s.title())
+    
 
 def getArrSize(arr):
     num = len(arr)
