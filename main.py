@@ -15,7 +15,6 @@ import discord
 from discord.ext import commands
 import asyncio
 from pymongo import MongoClient
-import re
 from bs4 import BeautifulSoup
 import itertools
 
@@ -463,6 +462,8 @@ def abbreviateStatUSER(stats):
             s == "combo efficiency"
 
         result.append(s.title())
+    
+    return result
     
 
 def getArrSize(arr):
